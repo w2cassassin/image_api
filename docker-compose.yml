@@ -1,0 +1,30 @@
+version: "3.8"
+services:
+  app:
+    build: .
+    container_name: image_api
+    restart: always
+    volumes:
+      - ./uploads:/var/www/image_api/uploads
+      - ./counter.txt:/app/counter.txt
+    env_file:
+      - .env
+    depends_on:
+      - clamav
+    networks:
+      - app_network
+    ports:
+      - "${APP_PORT:-8012}:8000"
+
+  clamav:
+    image: mkodockx/docker-clamav:alpine
+    container_name: clamav
+    restart: always
+    ports:
+      - "3310"
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
