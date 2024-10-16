@@ -71,3 +71,8 @@ REMOTE_DIR  в .env файле
 ```
 sudo mkdir -p /home/uploads
  ``` 
+
+## Документация доступна по адресу:
+```
+https://yourdomain.com/docs
+``` 
