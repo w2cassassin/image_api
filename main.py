@@ -6,7 +6,6 @@ from PIL import Image, ImageOps, ImageDraw
 import io
 import pyclamd
 from fastapi.responses import JSONResponse
-import time
 import random
 import string
 import paramiko
@@ -40,7 +39,6 @@ _thread_local = local()
 
 # Функция отправки файла на удалённый сервер через SCP
 def upload_to_remote_server(local_file_path, remote_file_name):
-    print("start loading")
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -53,9 +51,7 @@ def upload_to_remote_server(local_file_path, remote_file_name):
         )
 
         with ssh.open_sftp() as sftp:
-            print("ftp open")
             remote_path = os.path.join(REMOTE_DIR, remote_file_name)
-            print(local_file_path, remote_path)
             sftp.put(local_file_path, remote_path)
 
         ssh.close()
@@ -210,7 +206,6 @@ def process_banner_image(content: bytes) -> io.BytesIO:
 @app.post("/upload_logo/")
 async def upload_logo(file: UploadFile = File(...)):
     try:
-        st = time.time()
         if file.content_type not in ["image/jpeg", "image/png"]:
             raise HTTPException(status_code=400, detail="Недопустимый формат файла")
 

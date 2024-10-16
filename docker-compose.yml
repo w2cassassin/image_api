@@ -6,7 +6,6 @@ services:
     restart: always
     volumes:
       - ./uploads:/var/www/image_api/uploads
-      - ./counter.txt:/app/counter.txt
     env_file:
       - .env
     depends_on:
