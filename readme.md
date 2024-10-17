@@ -1,12 +1,12 @@
 ## 1.Настройка приложения
 #### 1. Загрузить исходники приложения
 ```
-cd /var/www/
+cd /home
 git clone https://github.com/w2cassassin/image_api
 cd image_api
 mkdir uploads
-sudo chown -R www-data:www-data /var/www/image_api/uploads
-sudo chmod -R 755 /var/www/image_api/uploads
+sudo chown -R www-data:www-data /home/image_api/uploads
+sudo chmod -R 755 /home/image_api/uploads
 ```
 #### 2.Переименовать файл .env.example в .env и заполнить все переменные
 Описание переменных:
@@ -53,7 +53,7 @@ server {
     }
 
     location /u/ {
-        alias /var/www/image_api/uploads/;
+        alias /home/image_api/uploads/;
         autoindex off;
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
