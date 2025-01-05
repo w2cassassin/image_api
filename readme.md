@@ -1,5 +1,7 @@
 ## 1.Настройка приложения
+
 #### 1. Загрузить исходники приложения
+
 ```
 cd /home
 git clone https://github.com/w2cassassin/image_api
@@ -8,8 +10,11 @@ mkdir uploads
 sudo chown -R www-data:www-data /home/image_api/uploads
 sudo chmod -R 755 /home/image_api/uploads
 ```
+
 #### 2.Переименовать файл .env.example в .env и заполнить все переменные
+
 Описание переменных:
+
 ```
 UPLOAD_DIR — директория внутри контейнера для сохранения загруженных изображений. (лучше не менять)
 LOCAL_SERVER_DOMAIN — домен основного сервера.
@@ -21,15 +26,21 @@ REMOTE_DIR — директория на бэкап-сервере для хра
 CLAMD_HOST — хост сервиса ClamAV. (можно не менять)
 CLAMD_PORT — порт сервиса ClamAV. (можно не менять)
 APP_PORT — порт Docker контейнера. (можно не менять)
+API_SECRET — ключ для доступа к приватным методам.
 ```
+
 #### 3.Собрать и запустить контейнеры
-``` 
+
+```
 sudo docker-compose up -d --build
 ```
+
 ## 2.Настройка nginx
+
 #### 1.Создать конфигурацию Nginx
 
-Создайте файл ```/etc/nginx/sites-available/yourdomain.com``` со следующим содержимым:
+Создайте файл ``/etc/nginx/sites-available/yourdomain.com`` со следующим содержимым:
+
 ```
 server {
     listen 80;
@@ -66,20 +77,27 @@ server {
     }
 }
 ```
+
 #### 2.Активировать конфигурацию и перезапустить Nginx
-``` 
+
+```
 sudo ln -s /etc/nginx/sites-available/yourdomain.com /etc/nginx/sites-enabled/
 sudo nginx -t 
 sudo systemctl restart nginx
 ```
+
 ## 3.Настройка бэкап сервера
+
 #### 1. Создать директорию для загрузок на бэкап-сервере
+
 REMOTE_DIR  в .env файле
+
 ```
 sudo mkdir -p /home/uploads
- ``` 
+```
 
 ## Документация доступна по адресу:
+
 ```
 https://yourdomain.com/docs
-``` 
+```
