@@ -1,7 +1,7 @@
 import os
 import threading
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Header, Form
 from PIL import Image, ImageOps, ImageDraw
 import io
 import pyclamd
@@ -27,6 +27,7 @@ REMOTE_DIR = os.getenv("REMOTE_DIR")  # директория на бэкап с�
 SSH_KEY_PATH = os.getenv("SSH_KEY_PATH")  # ключ к бэкап серверу
 CLAMD_HOST = os.getenv("CLAMD_HOST")  # хост антивируса
 CLAMD_PORT = int(os.getenv("CLAMD_PORT"))  # порт антивируса
+API_SECRET = os.getenv("API_SECRET")  # секретный ключ для авторизации
 
 # Проверка, что директория для загрузки существует
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -200,6 +201,90 @@ def process_banner_image(content: bytes) -> io.BytesIO:
     compressed_image = compress_image(image, 100, "JPEG")
 
     return compressed_image
+
+
+# Функция проверки авторизации
+def check_authorization(authorization: str = Header(None)):
+    if not authorization or authorization != API_SECRET:
+        raise HTTPException(status_code=401, detail="Неверный токен авторизации")
+
+
+# Эндпоинт для загрузки логотипа с кастомным именем
+@app.post("/upload_logo_with_name/")
+async def upload_logo_with_name(
+    file: UploadFile = File(...),
+    filename: str = Form(...),
+    authorization: str = Header(None),
+):
+    check_authorization(authorization)
+
+    try:
+        if file.content_type not in ["image/jpeg", "image/png"]:
+            raise HTTPException(status_code=400, detail="Недопустимый формат файла")
+
+        content = await file.read()
+
+        await check_for_viruses(content)
+
+        compressed_image = await run_in_threadpool(process_logo_image, content)
+
+        if not filename.lower().endswith(".png"):
+            filename = f"{filename}.png"
+
+        local_file_path = os.path.join(UPLOAD_DIR, filename)
+
+        async with aiofiles.open(local_file_path, "wb") as f:
+            await f.write(compressed_image.getvalue())
+
+        threading.Thread(
+            target=upload_to_remote_server, args=(local_file_path, filename)
+        ).start()
+
+        local_file_url = f"https://{LOCAL_SERVER_DOMAIN}/u/{filename}"
+        return JSONResponse(content={"url": local_file_url})
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка при обработке файла: {e}")
+
+
+# Эндпоинт для переименования файла
+@app.post("/rename_file/")
+async def rename_file(
+    old_name: str = Form(...),
+    new_name: str = Form(...),
+    authorization: str = Header(None),
+):
+    check_authorization(authorization)
+
+    try:
+        old_path = os.path.join(UPLOAD_DIR, old_name)
+        new_path = os.path.join(UPLOAD_DIR, new_name)
+
+        # Проверяем существование старого файла
+        if not os.path.exists(old_path):
+            return JSONResponse(content={"message": "Исходный файл не найден"})
+
+        # Проверяем существование нового имени
+        if os.path.exists(new_path):
+            return JSONResponse(
+                content={"message": "Файл с новым именем уже существует"}
+            )
+
+        # Переименовываем файл
+        os.rename(old_path, new_path)
+
+        # Отправляем на бэкап сервер с новым именем
+        threading.Thread(
+            target=upload_to_remote_server, args=(new_path, new_name)
+        ).start()
+
+        new_url = f"https://{LOCAL_SERVER_DOMAIN}/u/{new_name}"
+        return JSONResponse(content={"url": new_url})
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка при переименовании файла: {e}"
+        )
 
 
 # Эндпоинт для загрузки логотипа

@@ -56,6 +56,13 @@ server {
         alias /home/image_api/uploads/;
         autoindex off;
         add_header Cache-Control "public, max-age=31536000, immutable";
+  
+	# Если файл не найден, переходим в @fallback
+        try_files $uri @fallback;
+    }
+
+    location @fallback {
+        rewrite ^/u/(.*)$ https://domain.com/image/$1_250_20.png redirect;
     }
 }
 ```
