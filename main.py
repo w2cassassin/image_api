@@ -91,62 +91,50 @@ def compress_image(
 
     buffer = io.BytesIO()
     target_size_bytes = target_size_kb * 1024
-
-    if output_format.upper() == "JPEG":
-        quality = 90
-        while True:
+    output_format = output_format.upper()
+    if output_format == "JPEG":
+        min_quality = 10
+        max_quality = 95
+        quality = max_quality
+        image.save(buffer, format=output_format, quality=quality)
+        size = buffer.tell()
+        if size <= target_size_bytes:
+            buffer.seek(0)
+            return buffer
+        while min_quality < max_quality:
             buffer.seek(0)
             buffer.truncate(0)
+            quality = (min_quality + max_quality) // 2
             image.save(buffer, format=output_format, quality=quality)
             size = buffer.tell()
-            if size <= target_size_bytes or quality <= 10:
-                break
-            quality -= 10
-    elif output_format.upper() == "PNG":
+            if size < target_size_bytes:
+                min_quality = quality + 5
+            else:
+                max_quality = quality - 5
+        buffer.seek(0)
+        return buffer
+    elif output_format == "PNG":
         if image.mode == "RGBA":
-            quantized_image = image.quantize(method=Image.Quantize.LIBIMAGEQUANT)
+            image = image.quantize(method=Image.Quantize.FASTOCTREE)
         else:
-            quantized_image = image.quantize(
-                colors=256, method=Image.Quantize.MEDIANCUT
-            )
-
-        buffer.seek(0)
-        buffer.truncate(0)
-        quantized_image.save(buffer, format=output_format, optimize=True)
+            image = image.quantize(colors=256, method=Image.Quantize.MEDIANCUT)
+        image.save(buffer, format=output_format, optimize=True)
         size = buffer.tell()
-
         if size <= target_size_bytes:
             buffer.seek(0)
             return buffer
-
-        current_width, current_height = image.size
         scaling_factor = (target_size_bytes / size) ** 0.5
-        new_width = max(1, int(current_width * scaling_factor))
-        new_height = max(1, int(current_height * scaling_factor))
-        resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-
-        if resized_image.mode != "RGBA":
-            quantized_image = resized_image.quantize(
-                colors=128, method=Image.Quantize.MEDIANCUT
-            )
-        else:
-            quantized_image = resized_image.quantize(
-                method=Image.Quantize.LIBIMAGEQUANT
-            )
-
+        new_width = max(1, int(image.width * scaling_factor))
+        new_height = max(1, int(image.height * scaling_factor))
+        image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
         buffer.seek(0)
         buffer.truncate(0)
-        quantized_image.save(buffer, format=output_format, optimize=True)
+        image.save(buffer, format=output_format, optimize=True)
         size = buffer.tell()
-
-        if size <= target_size_bytes:
-            buffer.seek(0)
-            return buffer
+        buffer.seek(0)
+        return buffer
     else:
-        image.save(buffer, format=output_format)
-
-    buffer.seek(0)
-    return buffer
+        raise ValueError("Unsupported output format")
 
 
 # Функция для генерации имени файла с уникальностью и ограничением на 8 символов
