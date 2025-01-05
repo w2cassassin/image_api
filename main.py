@@ -1,7 +1,8 @@
 import os
 import threading
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, UploadFile, HTTPException, Header, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Depends, Security
+from fastapi.security import APIKeyHeader
 from PIL import Image, ImageOps, ImageDraw
 import io
 import pyclamd
@@ -36,6 +37,20 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 from threading import local
 
 _thread_local = local()
+
+api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
+
+async def get_api_key(api_key: str = Security(api_key_header)) -> str:
+    """
+    Проверка API ключа
+    """
+    if not api_key or api_key != API_SECRET:
+        raise HTTPException(
+            status_code=401,
+            detail="Неверный API ключ",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return api_key
 
 
 # Функция отправки файла на удалённый сервер через SCP
@@ -203,21 +218,13 @@ def process_banner_image(content: bytes) -> io.BytesIO:
     return compressed_image
 
 
-# Функция проверки авторизации
-def check_authorization(authorization: str = Header(None)):
-    if not authorization or authorization != API_SECRET:
-        raise HTTPException(status_code=401, detail="Неверный токен авторизации")
-
-
 # Эндпоинт для загрузки логотипа с кастомным именем
 @app.post("/upload_logo_with_name/")
 async def upload_logo_with_name(
     file: UploadFile = File(...),
     filename: str = Form(...),
-    authorization: str = Header(None),
+    api_key: str = Depends(get_api_key)
 ):
-    check_authorization(authorization)
-
     try:
         if file.content_type not in ["image/jpeg", "image/png"]:
             raise HTTPException(status_code=400, detail="Недопустимый формат файла")
@@ -252,10 +259,8 @@ async def upload_logo_with_name(
 async def rename_file(
     old_name: str = Form(...),
     new_name: str = Form(...),
-    authorization: str = Header(None),
+    api_key: str = Depends(get_api_key)
 ):
-    check_authorization(authorization)
-
     try:
         old_path = os.path.join(UPLOAD_DIR, old_name)
         new_path = os.path.join(UPLOAD_DIR, new_name)
