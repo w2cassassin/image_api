@@ -73,7 +73,7 @@ server {
     }
 
     location @fallback {
-        rewrite ^/u/(.*)$ https://domain.com/image/$1_250_20.png redirect;
+        rewrite ^/u/(.+)\.[^.]+$ https://domain.com/image/$1_250_20.png redirect;
     }
 }
 ```
