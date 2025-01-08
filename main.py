@@ -12,11 +12,20 @@ import string
 import paramiko
 from starlette.concurrency import run_in_threadpool
 import aiofiles
+from fastapi.middleware.cors import CORSMiddleware
 
 # Загрузка переменных из .env
 load_dotenv()
 
 app = FastAPI(title="Image Processor")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR")  # директория на сервере с апи
 LOCAL_SERVER_DOMAIN = os.getenv("LOCAL_SERVER_DOMAIN")  # домен сервера
