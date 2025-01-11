@@ -13,6 +13,9 @@ import paramiko
 from starlette.concurrency import run_in_threadpool
 import aiofiles
 from fastapi.middleware.cors import CORSMiddleware
+import aiohttp
+import re
+from fastapi.responses import Response
 
 # Загрузка переменных из .env
 load_dotenv()
@@ -38,6 +41,9 @@ SSH_KEY_PATH = os.getenv("SSH_KEY_PATH")  # ключ к бэкап сервер�
 CLAMD_HOST = os.getenv("CLAMD_HOST")  # хост антивируса
 CLAMD_PORT = int(os.getenv("CLAMD_PORT"))  # порт антивируса
 API_SECRET = os.getenv("API_SECRET")  # секретный ключ для авторизации
+REMOTE_IMAGE_BASE_URL = os.getenv(
+    "REMOTE_IMAGE_BASE_URL", "https://xumm.app"
+)  # базовый URL для запроса картинок
 
 # Проверка, что директория для загрузки существует
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -48,6 +54,7 @@ from threading import local
 _thread_local = local()
 
 api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
+
 
 async def get_api_key(api_key: str = Security(api_key_header)) -> str:
     """
@@ -190,29 +197,30 @@ def generate_filename(extension: str, prefix: str) -> str:
 
 
 # Функция обработки логотипа
-def process_logo_image(content: bytes) -> io.BytesIO:
+def process_logo_image(content: bytes, make_round: bool = True) -> io.BytesIO:
     image = Image.open(io.BytesIO(content))
 
-    # Обрезка до круга
-    image = ImageOps.fit(
-        image, (min(image.size), min(image.size)), centering=(0.5, 0.5)
-    )
+    if make_round:
+        # Обрезка до круга
+        image = ImageOps.fit(
+            image, (min(image.size), min(image.size)), centering=(0.5, 0.5)
+        )
 
-    # Создание круглой маски
-    mask = Image.new("L", image.size, 0)
-    draw = ImageDraw.Draw(mask)
-    draw.ellipse((0, 0) + image.size, fill=255)
+        # Создание круглой маски
+        mask = Image.new("L", image.size, 0)
+        draw = ImageDraw.Draw(mask)
+        draw.ellipse((0, 0) + image.size, fill=255)
 
-    # Преобразование изображения в режим RGBA
-    image = image.convert("RGBA")
+        # Преобразование изображения в режим RGBA
+        image = image.convert("RGBA")
 
-    # Создание изображения с прозрачным фоном
-    transparent_image = Image.new("RGBA", image.size)
-    transparent_image.paste(image, (0, 0), mask=mask)
+        # Создание изображения с прозрачным фоном
+        transparent_image = Image.new("RGBA", image.size)
+        transparent_image.paste(image, (0, 0), mask=mask)
+        image = transparent_image
 
     # Сжатие изображения
-    compressed_image = compress_image(transparent_image, 100, "PNG")
-
+    compressed_image = compress_image(image, 100, "WEBP")
     return compressed_image
 
 
@@ -232,7 +240,8 @@ def process_banner_image(content: bytes) -> io.BytesIO:
 async def upload_logo_with_name(
     file: UploadFile = File(...),
     filename: str = Form(...),
-    api_key: str = Depends(get_api_key)
+    make_round: bool = Form(True),
+    api_key: str = Depends(get_api_key),
 ):
     try:
         if file.content_type not in ["image/jpeg", "image/png"]:
@@ -242,10 +251,12 @@ async def upload_logo_with_name(
 
         await check_for_viruses(content)
 
-        compressed_image = await run_in_threadpool(process_logo_image, content)
+        compressed_image = await run_in_threadpool(
+            process_logo_image, content, make_round
+        )
 
-        if not filename.lower().endswith(".png"):
-            filename = f"{filename}.png"
+        if not filename.lower().endswith(".webp"):
+            filename = f"{filename}.webp"
 
         local_file_path = os.path.join(UPLOAD_DIR, filename)
 
@@ -268,7 +279,7 @@ async def upload_logo_with_name(
 async def rename_file(
     old_name: str = Form(...),
     new_name: str = Form(...),
-    api_key: str = Depends(get_api_key)
+    api_key: str = Depends(get_api_key),
 ):
     try:
         old_path = os.path.join(UPLOAD_DIR, old_name)
@@ -367,3 +378,49 @@ async def upload_banner(file: UploadFile = File(...)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка при обработке файла: {e}")
+
+
+async def fetch_and_convert_image(url: str, save_path: str) -> bytes:
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            if response.status != 200:
+                raise HTTPException(
+                    status_code=404, detail="Image not found on remote server"
+                )
+            content = await response.read()
+            image = Image.open(io.BytesIO(content))
+
+            if image.mode == "RGBA":
+                bg = Image.new("RGBA", image.size, (255, 255, 255, 255))
+                bg.paste(image, mask=image.split()[3])
+                image = bg
+
+            output = io.BytesIO()
+            image.save(output, format="WEBP", quality=95, method=6)
+
+            webp_content = output.getvalue()
+
+            async with aiofiles.open(save_path, "wb") as f:
+                await f.write(webp_content)
+
+            return webp_content
+
+
+@app.get("/u/{filename}")
+async def get_image(filename: str):
+    local_path = os.path.join(UPLOAD_DIR, filename)
+    if os.path.exists(local_path):
+        async with aiofiles.open(local_path, 'rb') as f:
+            content = await f.read()
+        return Response(content=content, media_type="image/webp")
+    parts = filename.split('_', 1) 
+    base_name = parts[0]
+    base_name = os.path.splitext(base_name)[0]
+    if not base_name:
+        raise HTTPException(status_code=404, detail="Invalid filename")
+    remote_url = f"{REMOTE_IMAGE_BASE_URL}/avatar/{base_name}_250_20.png"
+    try:
+        content = await fetch_and_convert_image(remote_url, local_path)
+        return Response(content=content, media_type="image/webp")
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="Image not found")

@@ -27,6 +27,7 @@ CLAMD_HOST — хост сервиса ClamAV. (можно не менять)
 CLAMD_PORT — порт сервиса ClamAV. (можно не менять)
 APP_PORT — порт Docker контейнера. (можно не менять)
 API_SECRET — ключ для доступа к приватным методам.
+REMOTE_IMAGE_BASE_URL — внешний домен для получения картинок.
 ```
 
 #### 3.Собрать и запустить контейнеры
@@ -66,22 +67,43 @@ server {
     location /u/ {
         alias /home/image_api/uploads/;
         autoindex off;
-        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Cache-Control "public, max-age=259200, immutable";
   
-	# Если файл не найден, переходим в @fallback
+        # Если файл не найден, запрос идет на бекенд
         try_files $uri @fallback;
     }
 
+    # Fallback для запросов, если файл не найден
     location @fallback {
-        rewrite ^/u/(.+)\.[^.]+$ https://domain.com/image/$1_250_20.png redirect;
+        proxy_pass http://127.0.0.1:8012;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Original-URI $request_uri;
     }
+
 }
 ```
 
-#### 2.Активировать конфигурацию и перезапустить Nginx
+#### 2. Настройка proxy_cache
+
+#### 1. Создать директорию для proxy_cache
 
 ```
-sudo ln -s /etc/nginx/sites-available/yourdomain.com /etc/nginx/sites-enabled/
+mkdir /var/cache/nginx/img_cache
+```
+#### 2. Настроить кэш
+В файле ``nginx.conf`` (расположен по пути /etc/nginx/) в блок http добавить следующий код:
+
+```
+proxy_cache_path /var/cache/nginx/img_cache
+                     keys_zone=img_cache:10m
+                     max_size=1g
+                     inactive=3d;
+```
+
+#### 3.Активировать конфигурацию и перезапустить Nginx
+
+```
 sudo nginx -t 
 sudo systemctl restart nginx
 ```
