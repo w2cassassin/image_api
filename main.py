@@ -401,10 +401,6 @@ async def fetch_and_convert_image(url: str, save_path: str) -> bytes:
 
             image.save(output, **save_params)
             webp_content = output.getvalue()
-
-            async with aiofiles.open(save_path, "wb") as f:
-                await f.write(webp_content)
-
             return webp_content
 
 
