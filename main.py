@@ -390,14 +390,16 @@ async def fetch_and_convert_image(url: str, save_path: str) -> bytes:
             content = await response.read()
             image = Image.open(io.BytesIO(content))
 
-            if image.mode == "RGBA":
-                bg = Image.new("RGBA", image.size, (255, 255, 255, 255))
-                bg.paste(image, mask=image.split()[3])
-                image = bg
-
             output = io.BytesIO()
-            image.save(output, format="WEBP", quality=95, method=6)
 
+            save_params = {
+                "format": "WEBP",
+                "quality": 100,
+                "method": 6,
+                "lossless": True,
+            }
+
+            image.save(output, **save_params)
             webp_content = output.getvalue()
 
             async with aiofiles.open(save_path, "wb") as f:
@@ -410,10 +412,10 @@ async def fetch_and_convert_image(url: str, save_path: str) -> bytes:
 async def get_image(filename: str):
     local_path = os.path.join(UPLOAD_DIR, filename)
     if os.path.exists(local_path):
-        async with aiofiles.open(local_path, 'rb') as f:
+        async with aiofiles.open(local_path, "rb") as f:
             content = await f.read()
         return Response(content=content, media_type="image/webp")
-    parts = filename.split('_', 1) 
+    parts = filename.split("_", 1)
     base_name = parts[0]
     base_name = os.path.splitext(base_name)[0]
     if not base_name:
